@@ -1,7 +1,7 @@
 {
   "name": "f-society-music-bot",
   "version": "3.0.0",
-  "description": "Discord music bot with Brave browser + adblock - FIXED",
+  "description": "Discord music bot with Brave browser + adblock - WORKING",
   "main": "browser-automation.js",
   "scripts": {
     "start": "node browser-automation.js"
@@ -11,8 +11,7 @@
     "cors": "^2.8.5",
     "puppeteer": "^21.0.0",
     "puppeteer-extra": "^3.3.6",
-    "puppeteer-extra-plugin-stealth": "^2.11.2",
-    "puppeteer-extra-plugin-adblocker": "^0.1.16"
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   },
   "engines": {
     "node": ">=18.0.0"
