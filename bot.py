@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (FINAL VERSION)
+# DISCORD MUSIC BOT - F-SOCIETY (FINAL WITH ADBLOCK)
 # =============================================================
 # - Auto-joins voice channel on !play
-# - Brave browser with Ghostery adblock
+# - Brave browser with adblock
 # - Full queue system with playlist support
 # - Ad-free YouTube playback
 # - F-Society branding
@@ -98,13 +98,11 @@ brave_process = None
 # =============================================================
 
 def get_user_voice_channel(ctx):
-    """Get the voice channel the user is in."""
     if not ctx.author.voice:
         return None
     return ctx.author.voice.channel
 
 async def ensure_voice_connected(ctx):
-    """Ensure bot is connected to voice channel. Returns (channel, message)."""
     channel = get_user_voice_channel(ctx)
     if not channel:
         return None, "❌ You need to be in a voice channel first!"
@@ -119,7 +117,6 @@ async def ensure_voice_connected(ctx):
         return channel, f"🔊 Already in **{channel.name}**"
 
 async def leave_voice(ctx):
-    """Leave the voice channel."""
     if ctx.voice_client:
         guild_id = ctx.guild.id
         if guild_id in music_state:
@@ -134,7 +131,6 @@ async def leave_voice(ctx):
 # =============================================================
 
 def start_brave_server():
-    """Start the Brave browser automation server."""
     global brave_process
     try:
         env = os.environ.copy()
@@ -157,7 +153,6 @@ def start_brave_server():
         return False
 
 async def search_brave(query: str) -> dict:
-    """Search YouTube using Brave browser automation."""
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(
@@ -182,7 +177,6 @@ async def search_brave(query: str) -> dict:
 # =============================================================
 
 def format_duration(seconds):
-    """Format duration in seconds to MM:SS or HH:MM:SS."""
     if not seconds:
         return "Live"
     minutes, seconds = divmod(int(seconds), 60)
@@ -192,13 +186,11 @@ def format_duration(seconds):
     return f"{minutes:02d}:{seconds:02d}"
 
 def is_playlist_url(url: str) -> bool:
-    """Check if the URL is a YouTube playlist."""
     if not url:
         return False
     return 'playlist?list=' in url or '&list=' in url
 
 def clean_query(query: str) -> str:
-    """Clean search query."""
     return query.strip()
 
 # =============================================================
@@ -206,7 +198,6 @@ def clean_query(query: str) -> str:
 # =============================================================
 
 async def get_song_info_brave(query: str):
-    """Get song info using Brave browser automation."""
     try:
         search_result = await search_brave(query)
         if not search_result or not search_result.get('url'):
@@ -230,7 +221,6 @@ async def get_song_info_brave(query: str):
         return None
 
 async def get_song_info_url(url: str):
-    """Get song info from YouTube URL."""
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -250,7 +240,6 @@ async def get_song_info_url(url: str):
         return None
 
 async def get_playlist_info(url: str):
-    """Extract all songs from a YouTube playlist."""
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -300,7 +289,6 @@ async def get_playlist_info(url: str):
 # =============================================================
 
 async def create_now_playing_embed(song):
-    """Create now playing embed."""
     embed = discord.Embed(
         title="🎵 Now Playing",
         description=f"**{song.get('title', 'Unknown')}**",
@@ -320,7 +308,6 @@ async def create_now_playing_embed(song):
     return embed
 
 async def create_queue_embed(ctx, guild_id):
-    """Create queue embed."""
     queue_list = music_state[guild_id]['queue']
     current = music_state[guild_id]['current']
     
@@ -379,7 +366,7 @@ async def on_ready():
     logger.info(f'🛡️ Adblock: {"✅ ENABLED" if ADBLOCK_ENABLED else "❌ DISABLED"}')
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info('\n📋 Commands:')
-    logger.info('  !play <song/URL/playlist> - Play a song (auto-joins voice)')
+    logger.info('  !play <song> - Play a song (auto-joins voice)')
     logger.info('  !join - Join your voice channel')
     logger.info('  !pause - Pause the current song')
     logger.info('  !resume - Resume the current song')
@@ -391,7 +378,7 @@ async def on_ready():
     logger.info('  !leave - Leave the voice channel')
     logger.info('  !shuffle - Shuffle the queue')
     logger.info('  !clear - Clear the queue')
-    logger.info('  !search <query> - Search using Brave (ad-free)')
+    logger.info('  !search <query> - Search using Brave')
     logger.info('  !adblock - Toggle adblock status')
     logger.info('  !help - Show this menu')
     
@@ -399,7 +386,6 @@ async def on_ready():
 
 @bot.command(name='help')
 async def help_cmd(ctx):
-    """Show help menu."""
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
@@ -421,7 +407,7 @@ async def help_cmd(ctx):
                    "`!np` - Now playing\n\n"
                    "**Settings:**\n"
                    "`!adblock` - Toggle adblock\n"
-                   "`!commands` - Show this menu",
+                   "`!help` - Show this menu",
         color=discord.Color.from_rgb(0, 255, 204),
         timestamp=datetime.datetime.now()
     )
@@ -430,7 +416,6 @@ async def help_cmd(ctx):
 
 @bot.command(name='join')
 async def join_cmd(ctx):
-    """Manually join the user's voice channel."""
     channel, message = await ensure_voice_connected(ctx)
     if channel:
         await ctx.send(message)
@@ -439,8 +424,6 @@ async def join_cmd(ctx):
 
 @bot.command(name='play', aliases=['p'])
 async def play_cmd(ctx, *, query: str):
-    """Play a song (auto-joins voice channel)."""
-    # Auto-join voice channel
     channel, join_msg = await ensure_voice_connected(ctx)
     if not channel:
         await ctx.send(join_msg)
@@ -459,7 +442,6 @@ async def play_cmd(ctx, *, query: str):
     adblock_status = "🛡️ Adblock: ON" if ADBLOCK_ENABLED else "⚠️ Adblock: OFF"
     status_msg = await ctx.send(f"🔍 Processing `{query}`...\n{join_msg}\n{adblock_status}")
     
-    # Check if it's a playlist URL
     if is_playlist_url(query):
         await status_msg.edit(content=f"📁 Detected playlist! Fetching songs...\n{join_msg}\n{adblock_status}")
         playlist_data = await get_playlist_info(query)
@@ -487,7 +469,6 @@ async def play_cmd(ctx, *, query: str):
         
         return
     
-    # Check if it's a single video URL
     if 'youtube.com/watch' in query or 'youtu.be/' in query:
         await status_msg.edit(content=f"🎵 Fetching song details...\n{join_msg}\n{adblock_status}")
         song_info = await get_song_info_url(query)
@@ -504,7 +485,6 @@ async def play_cmd(ctx, *, query: str):
         
         return
     
-    # Search using Brave Browser
     await status_msg.edit(content=f"🔍 Searching for `{query}` using Brave Browser...\n{join_msg}\n{adblock_status}")
     song_info = await get_song_info_brave(query)
     
@@ -520,7 +500,6 @@ async def play_cmd(ctx, *, query: str):
 
 @bot.command(name='search')
 async def search_cmd(ctx, *, query: str):
-    """Search using Brave browser."""
     query = clean_query(query)
     adblock_status = "🛡️ Adblock: ON" if ADBLOCK_ENABLED else "⚠️ Adblock: OFF"
     await ctx.send(f"🔍 Searching `{query}` using Brave Browser...\n{adblock_status}")
@@ -548,7 +527,6 @@ async def search_cmd(ctx, *, query: str):
 
 @bot.command(name='adblock')
 async def toggle_adblock(ctx):
-    """Toggle adblock status."""
     global ADBLOCK_ENABLED
     ADBLOCK_ENABLED = not ADBLOCK_ENABLED
     os.environ['ADBLOCK_ENABLED'] = str(ADBLOCK_ENABLED).lower()
@@ -565,7 +543,6 @@ async def toggle_adblock(ctx):
 
 @bot.command(name='pause')
 async def pause_cmd(ctx):
-    """Pause the current song."""
     if not ctx.voice_client or not ctx.voice_client.is_playing():
         await ctx.send("❌ Nothing is playing!")
         return
@@ -574,7 +551,6 @@ async def pause_cmd(ctx):
 
 @bot.command(name='resume')
 async def resume_cmd(ctx):
-    """Resume the current song."""
     if not ctx.voice_client or not ctx.voice_client.is_paused():
         await ctx.send("❌ Nothing is paused!")
         return
@@ -583,7 +559,6 @@ async def resume_cmd(ctx):
 
 @bot.command(name='skip')
 async def skip_cmd(ctx):
-    """Skip the current song."""
     if not ctx.voice_client:
         await ctx.send("❌ Not in a voice channel!")
         return
@@ -595,7 +570,6 @@ async def skip_cmd(ctx):
 
 @bot.command(name='stop')
 async def stop_cmd(ctx):
-    """Stop the music and clear the queue."""
     guild_id = ctx.guild.id
     if guild_id in music_state:
         music_state[guild_id]['queue'] = []
@@ -606,7 +580,6 @@ async def stop_cmd(ctx):
 
 @bot.command(name='queue', aliases=['q'])
 async def queue_cmd(ctx):
-    """Show the current queue."""
     guild_id = ctx.guild.id
     if guild_id not in music_state or not music_state[guild_id]['queue']:
         await ctx.send("📭 The queue is empty!")
@@ -617,7 +590,6 @@ async def queue_cmd(ctx):
 
 @bot.command(name='volume')
 async def volume_cmd(ctx, vol: int):
-    """Set the volume (0-200)."""
     if not ctx.voice_client:
         await ctx.send("❌ Not in a voice channel!")
         return
@@ -634,7 +606,6 @@ async def volume_cmd(ctx, vol: int):
 
 @bot.command(name='np', aliases=['nowplaying'])
 async def nowplaying_cmd(ctx):
-    """Show now playing."""
     guild_id = ctx.guild.id
     if guild_id not in music_state or not music_state[guild_id]['current']:
         await ctx.send("❌ Nothing is playing!")
@@ -645,7 +616,6 @@ async def nowplaying_cmd(ctx):
 
 @bot.command(name='leave')
 async def leave_cmd(ctx):
-    """Leave the voice channel."""
     if await leave_voice(ctx):
         await ctx.send("👋 Left the voice channel!")
     else:
@@ -653,7 +623,6 @@ async def leave_cmd(ctx):
 
 @bot.command(name='shuffle')
 async def shuffle_cmd(ctx):
-    """Shuffle the queue."""
     guild_id = ctx.guild.id
     if guild_id not in music_state or not music_state[guild_id]['queue']:
         await ctx.send("📭 The queue is empty!")
@@ -663,7 +632,6 @@ async def shuffle_cmd(ctx):
 
 @bot.command(name='clear')
 async def clear_cmd(ctx):
-    """Clear the queue."""
     guild_id = ctx.guild.id
     if guild_id in music_state:
         music_state[guild_id]['queue'] = []
@@ -676,7 +644,6 @@ async def clear_cmd(ctx):
 # =============================================================
 
 async def play_next(ctx):
-    """Play the next song in the queue."""
     guild_id = ctx.guild.id
     
     if guild_id not in music_state or not music_state[guild_id]['queue']:
