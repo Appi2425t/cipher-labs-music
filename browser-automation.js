@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // =============================================================
-// BRAVE BROWSER AUTOMATION WITH ADBLOCK
+// BRAVE BROWSER AUTOMATION WITH ADBLOCK (FIXED)
 // =============================================================
-// - Uses @sthbryan/browser-mcp with Ghostery adblock
+// - Uses Puppeteer with stealth & adblocker plugins
 // - Custom ad blocking rules
 // - HTTP API for the Discord bot
 // - Headless mode for Railway
@@ -36,7 +36,6 @@ app.use(express.json());
 // =============================================================
 
 const adblockRules = [
-  // YouTube Ad Domains
   '||ads.youtube.com^',
   '||doubleclick.net^',
   '||googleadservices.com^',
@@ -44,17 +43,6 @@ const adblockRules = [
   '||youtube.com/api/stats/ads',
   '||youtube.com/pagead',
   '||google-analytics.com^',
-  
-  // Element Hiding
-  { type: 'elementHide', selector: '.ytd-ad-slot-renderer' },
-  { type: 'elementHide', selector: '.ytd-promoted-sparkles-web-renderer' },
-  { type: 'elementHide', selector: '#player-ads' },
-  { type: 'elementHide', selector: '.ytp-ad-module' },
-  { type: 'elementHide', selector: '.ytp-ad-player-overlay' },
-  { type: 'elementHide', selector: '.ytp-ad-image-overlay' },
-  { type: 'elementHide', selector: '.ytp-ad-text-overlay' },
-  
-  // Other ad networks
   '||adservice.google.com^',
   '||pagead2.googlesyndication.com^',
   '||partnerad.l.doubleclick.net^',
@@ -62,94 +50,66 @@ const adblockRules = [
 ];
 
 // =============================================================
-// BRAVE BROWSER MANAGEMENT
+// BRAVE BROWSER MANAGEMENT (Using Puppeteer)
 // =============================================================
 
-let brave = null;
+let browser = null;
 let isReady = false;
 
 async function startBraveBrowser() {
     try {
-        console.log('🔄 Initializing Brave browser with Ghostery adblock...');
+        console.log('🔄 Initializing Brave browser with adblock...');
         
-        const browserMcp = require('@sthbryan/browser-mcp');
+        const puppeteer = require('puppeteer-extra');
+        const StealthPlugin = require('puppeteer-extra-plugin-stealth');
         
-        const config = {
+        // Add stealth plugin
+        puppeteer.use(StealthPlugin());
+        
+        // Add adblocker if enabled
+        if (ADBLOCK_ENABLED) {
+            try {
+                const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
+                puppeteer.use(AdblockerPlugin({
+                    blockTrackers: true,
+                    blockAds: true
+                }));
+                console.log('🛡️ Adblocker plugin loaded');
+            } catch (e) {
+                console.log('⚠️ Adblocker plugin not available, continuing without');
+            }
+        }
+        
+        // Find Brave executable path
+        const bravePath = getBravePath();
+        console.log(`🔍 Brave path: ${bravePath || 'Not found, using Chromium fallback'}`);
+        
+        // Launch browser
+        browser = await puppeteer.launch({
             headless: HEADLESS,
-            browser: 'brave',
+            executablePath: bravePath || undefined,
             userDataDir: BROWSER_PROFILE_PATH,
-            adblock: {
-                enabled: ADBLOCK_ENABLED,
-                rules: adblockRules
-            },
             args: [
-                '--disable-blink-features=AutomationControlled',
-                '--disable-dev-shm-usage',
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--disable-accelerated-2d-canvas',
-                '--disable-pdf-viewer',
-                '--disable-component-extensions-with-background-pages',
-                '--disable-default-apps',
-                '--mute-audio',
-                '--no-first-run',
-                '--block-new-web-contents',
-                '--disable-background-networking',
-                '--disable-sync',
+                '--disable-blink-features=AutomationControlled',
+                '--disable-web-security',
+                '--disable-features=IsolateOrigins,site-per-process',
                 '--disable-extensions',
-                '--disable-component-update'
+                '--disable-default-apps',
+                '--disable-component-update',
+                '--mute-audio'
             ]
-        };
-        
-        brave = await browserMcp.initialize(config);
+        });
         
         isReady = true;
-        console.log('✅ Brave browser ready with Ghostery adblock!');
-        console.log(`🛡️ ${adblockRules.filter(r => typeof r === 'string').length} domain rules loaded`);
-        console.log(`🎯 ${adblockRules.filter(r => typeof r === 'object').length} element hiding rules loaded`);
-        
+        console.log(`✅ Browser ready! (${bravePath ? 'Brave' : 'Chromium'})`);
         return true;
     } catch (error) {
-        console.error('❌ Failed to start Brave:', error);
-        
-        // Fallback: Try puppeteer
-        try {
-            console.log('🔄 Attempting fallback with puppeteer...');
-            const puppeteer = require('puppeteer-extra');
-            const StealthPlugin = require('puppeteer-extra-plugin-stealth');
-            const AdblockerPlugin = require('puppeteer-extra-plugin-adblocker');
-            
-            puppeteer.use(StealthPlugin());
-            if (ADBLOCK_ENABLED) {
-                puppeteer.use(AdblockerPlugin({ blockTrackers: true, blockAds: true }));
-                console.log('🛡️ Puppeteer adblocker plugin loaded');
-            }
-            
-            const bravePath = getBravePath();
-            if (bravePath) {
-                const browser = await puppeteer.launch({
-                    headless: HEADLESS,
-                    executablePath: bravePath,
-                    userDataDir: BROWSER_PROFILE_PATH,
-                    args: [
-                        '--no-sandbox',
-                        '--disable-setuid-sandbox',
-                        '--disable-dev-shm-usage',
-                        '--disable-gpu',
-                        '--disable-accelerated-2d-canvas',
-                        '--disable-blink-features=AutomationControlled'
-                    ]
-                });
-                
-                brave = { browser, isPuppeteer: true };
-                isReady = true;
-                console.log('✅ Brave browser ready via puppeteer fallback!');
-                return true;
-            }
-        } catch (fallbackError) {
-            console.error('❌ Fallback failed:', fallbackError);
-        }
+        console.error('❌ Failed to start browser:', error);
         return false;
     }
 }
@@ -176,9 +136,8 @@ app.get('/health', (req, res) => {
     res.json({
         status: isReady ? 'ok' : 'starting',
         headless: HEADLESS,
-        browser: 'brave',
-        adblock: ADBLOCK_ENABLED,
-        rules_loaded: ADBLOCK_ENABLED ? adblockRules.length : 0
+        browser: 'brave/puppeteer',
+        adblock: ADBLOCK_ENABLED
     });
 });
 
@@ -188,44 +147,44 @@ app.post('/search', async (req, res) => {
     if (!isReady) return res.status(503).json({ error: 'Browser not ready' });
     
     try {
-        let result;
-        if (brave && brave.isPuppeteer) {
-            const page = await brave.browser.newPage();
-            await page.goto(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
-                waitUntil: 'domcontentloaded',
-                timeout: 30000
-            });
-            await page.waitForSelector('ytd-video-renderer', { timeout: 10000 }).catch(() => {});
-            
-            const videoData = await page.evaluate(() => {
-                const video = document.querySelector('ytd-video-renderer');
-                if (!video) return null;
-                const titleEl = video.querySelector('#video-title');
-                const linkEl = video.querySelector('#video-title');
-                const thumbnailEl = video.querySelector('#thumbnail');
-                return {
-                    title: titleEl ? titleEl.textContent.trim() : 'Unknown',
-                    url: linkEl ? `https://youtube.com${linkEl.getAttribute('href')}` : '',
-                    thumbnail: thumbnailEl ? thumbnailEl.getAttribute('src') : ''
-                };
-            });
-            await page.close();
-            if (videoData && videoData.url) result = videoData;
-        } else {
-            const searchResult = await brave.tools.search({ query, maxResults: 1 });
-            if (searchResult && searchResult.results && searchResult.results.length > 0) {
-                const firstResult = searchResult.results[0];
-                result = {
-                    title: firstResult.title || 'Unknown',
-                    url: firstResult.url || '',
-                    description: firstResult.description || '',
-                    thumbnail: firstResult.thumbnail || ''
-                };
-            }
-        }
+        const page = await browser.newPage();
         
-        if (result) {
-            res.json({ ...result, source: 'Brave Browser', adblock: ADBLOCK_ENABLED ? 'Enabled' : 'Disabled' });
+        // Set user agent
+        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+        
+        // Go to YouTube search
+        await page.goto(`https://www.youtube.com/results?search_query=${encodeURIComponent(query)}`, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+        });
+        
+        // Wait for results
+        await page.waitForSelector('ytd-video-renderer', { timeout: 10000 }).catch(() => {});
+        
+        // Extract first video
+        const videoData = await page.evaluate(() => {
+            const video = document.querySelector('ytd-video-renderer');
+            if (!video) return null;
+            
+            const titleEl = video.querySelector('#video-title');
+            const linkEl = video.querySelector('#video-title');
+            const thumbnailEl = video.querySelector('#thumbnail img');
+            
+            return {
+                title: titleEl ? titleEl.textContent.trim() : 'Unknown',
+                url: linkEl ? `https://youtube.com${linkEl.getAttribute('href')}` : '',
+                thumbnail: thumbnailEl ? thumbnailEl.getAttribute('src') || '' : ''
+            };
+        });
+        
+        await page.close();
+        
+        if (videoData && videoData.url) {
+            res.json({
+                ...videoData,
+                source: 'Brave Browser',
+                adblock: ADBLOCK_ENABLED ? 'Enabled' : 'Disabled'
+            });
         } else {
             res.json(null);
         }
@@ -241,40 +200,13 @@ app.post('/fetch', async (req, res) => {
     if (!isReady) return res.status(503).json({ error: 'Browser not ready' });
     
     try {
-        let content;
-        if (brave && brave.isPuppeteer) {
-            const page = await brave.browser.newPage();
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
-            content = await page.content();
-            await page.close();
-        } else {
-            content = await brave.tools.fetch({ url });
-        }
+        const page = await browser.newPage();
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        const content = await page.content();
+        await page.close();
         res.json({ content });
     } catch (error) {
         console.error('Fetch error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-app.post('/screenshot', async (req, res) => {
-    const { url } = req.body;
-    if (!url) return res.status(400).json({ error: 'URL is required' });
-    if (!isReady) return res.status(503).json({ error: 'Browser not ready' });
-    
-    try {
-        let screenshot;
-        if (brave && brave.isPuppeteer) {
-            const page = await brave.browser.newPage();
-            await page.goto(url, { waitUntil: 'networkidle2' });
-            screenshot = await page.screenshot({ encoding: 'base64' });
-            await page.close();
-        } else {
-            screenshot = await brave.tools.screenshot({ url, fullPage: false });
-        }
-        res.json({ screenshot });
-    } catch (error) {
-        console.error('Screenshot error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -283,9 +215,8 @@ app.get('/status', (req, res) => {
     res.json({
         ready: isReady,
         headless: HEADLESS,
-        browser: 'brave',
+        browser: 'brave/puppeteer',
         adblock: ADBLOCK_ENABLED,
-        rules_count: adblockRules.length,
         profile_path: BROWSER_PROFILE_PATH
     });
 });
@@ -298,7 +229,7 @@ async function start() {
     try {
         await startBraveBrowser();
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🌐 Brave automation server running on port ${PORT}`);
+            console.log(`🌐 Automation server running on port ${PORT}`);
         });
     } catch (error) {
         console.error('❌ Failed to start:', error);
