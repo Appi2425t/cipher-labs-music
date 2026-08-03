@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (YT-DLP ONLY)
+# DISCORD MUSIC BOT - F-SOCIETY (WITH COOKIES)
 # =============================================================
-# - Uses yt-dlp directly (no Brave server needed)
+# - Uses yt-dlp with cookies to bypass YouTube bot detection
 # - Auto-joins voice channel on .play
 # - Full queue system with playlist support
 # - F-Society branding
@@ -42,7 +42,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 DEFAULT_VOLUME = float(os.environ.get('DEFAULT_VOLUME', '0.5'))
 
 # =============================================================
-# YT-DLP OPTIONS
+# YT-DLP OPTIONS (WITH COOKIES)
 # =============================================================
 
 FFMPEG_OPTIONS = {
@@ -50,13 +50,14 @@ FFMPEG_OPTIONS = {
     'options': f'-vn -filter:a "volume={DEFAULT_VOLUME}"'
 }
 
+# YDL_OPTIONS with cookies support
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
     'extractaudio': True,
     'audioformat': 'mp3',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
     'restrictfilenames': True,
-    'noplaylist': False,
+    'noplaylist': True,
     'nocheckcertificate': True,
     'ignoreerrors': True,
     'logtostderr': False,
@@ -64,12 +65,16 @@ YDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
+    'cookiefile': 'cookies.txt',  # <-- REQUIRED for Railway
     'extractor_args': {
         'youtube': {
-            'player_client': ['android'],
+            'player_client': ['android', 'web'],
             'skip': ['dash', 'hls'],
+            'extract_flat': False,
         }
-    }
+    },
+    'geo_bypass': True,
+    'geo_bypass_country': 'US',
 }
 
 # =============================================================
@@ -141,18 +146,30 @@ def clean_query(query: str) -> str:
     return query.strip()
 
 # =============================================================
-# SONG FUNCTIONS (YT-DLP ONLY)
+# SONG FUNCTIONS (WITH COOKIES)
 # =============================================================
 
 async def get_song_info(query: str):
-    """Get song info using yt-dlp."""
+    """Get song info using yt-dlp with cookies."""
     logger.info(f"🔍 Searching for: {query}")
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(f"ytsearch:1:{query}", download=False)
+            search_query = f"ytsearch1:{query}"
+            info = ydl.extract_info(search_query, download=False)
+            
             if info and info.get('entries'):
                 video = info['entries'][0]
                 if video:
+                    audio_url = video.get('url')
+                    if not audio_url:
+                        formats = video.get('formats', [])
+                        for f in formats:
+                            if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                                audio_url = f.get('url')
+                                break
+                        if not audio_url and formats:
+                            audio_url = formats[-1].get('url')
+                    
                     logger.info(f"✅ Found: {video.get('title')}")
                     return {
                         'title': video.get('title', 'Unknown'),
@@ -160,7 +177,7 @@ async def get_song_info(query: str):
                         'duration': video.get('duration', 0),
                         'thumbnail': video.get('thumbnail', ''),
                         'uploader': video.get('uploader', 'Unknown'),
-                        'audio_url': video.get('url', '')
+                        'audio_url': audio_url or video.get('url', '')
                     }
             return None
     except Exception as e:
@@ -168,11 +185,22 @@ async def get_song_info(query: str):
         return None
 
 async def get_song_info_url(url: str):
+    """Get song info from a URL."""
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
             if info is None:
                 return None
+            
+            audio_url = info.get('url')
+            if not audio_url:
+                formats = info.get('formats', [])
+                for f in formats:
+                    if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                        audio_url = f.get('url')
+                        break
+                if not audio_url and formats:
+                    audio_url = formats[-1].get('url')
             
             return {
                 'title': info.get('title', 'Unknown'),
@@ -180,13 +208,14 @@ async def get_song_info_url(url: str):
                 'duration': info.get('duration', 0),
                 'thumbnail': info.get('thumbnail', ''),
                 'uploader': info.get('uploader', 'Unknown'),
-                'audio_url': info.get('url', '')
+                'audio_url': audio_url or info.get('url', '')
             }
     except Exception as e:
         logger.error(f"Error getting URL info: {e}")
         return None
 
 async def get_playlist_info(url: str):
+    """Get playlist info."""
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -199,15 +228,24 @@ async def get_playlist_info(url: str):
                 
                 for entry in info['entries']:
                     if entry:
-                        song = {
+                        audio_url = entry.get('url')
+                        if not audio_url:
+                            formats = entry.get('formats', [])
+                            for f in formats:
+                                if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                                    audio_url = f.get('url')
+                                    break
+                            if not audio_url and formats:
+                                audio_url = formats[-1].get('url')
+                        
+                        songs.append({
                             'title': entry.get('title', 'Unknown'),
                             'url': entry.get('webpage_url', ''),
                             'duration': entry.get('duration', 0),
                             'thumbnail': entry.get('thumbnail', ''),
                             'uploader': entry.get('uploader', 'Unknown'),
-                            'audio_url': entry.get('url', '')
-                        }
-                        songs.append(song)
+                            'audio_url': audio_url or entry.get('url', '')
+                        })
                 
                 return {
                     'is_playlist': True,
@@ -312,7 +350,7 @@ async def on_ready():
     logger.info(f'📡 Connected to {len(bot.guilds)} servers')
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info(f'📌 Prefix: .')
-    logger.info(f'🔍 Source: yt-dlp')
+    logger.info(f'🔍 Source: yt-dlp with cookies')
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
@@ -580,10 +618,16 @@ async def on_command_error(ctx, error):
 # =============================================================
 
 def main():
-    logger.info("🎵 Starting F-Society Music Bot (yt-dlp)...")
+    logger.info("🎵 Starting F-Society Music Bot (with cookies)...")
     logger.info("🔊 Auto-join voice channel: ENABLED")
     logger.info("📌 Prefix: .")
-    logger.info("🔍 Source: yt-dlp (stable)")
+    logger.info("🔍 Source: yt-dlp with cookies")
+    
+    # Check if cookies file exists
+    if os.path.exists('cookies.txt'):
+        logger.info("✅ cookies.txt found")
+    else:
+        logger.warning("⚠️ cookies.txt not found! YouTube may block requests.")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
