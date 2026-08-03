@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (FIXED)
+# DISCORD MUSIC BOT - F-SOCIETY (FULLY FIXED)
 # =============================================================
-# - Fixed: davey voice encryption support
-# - Fixed: 'help' command conflict
-# - Fixed: YouTube format errors
+# - FIXED: 'help' command conflict (renamed to 'commands')
+# - FIXED: YouTube format errors (updated yt-dlp options)
+# - FIXED: Voice encryption (davey + PyNaCl)
+# - FIXED: YouTube bot detection (cookies support)
+# - FIXED: Cookie file support for Railway
 # - F-Society branding
 # - Developed by @yathishyt
 # =============================================================
@@ -19,12 +21,7 @@ import datetime
 import sys
 import random
 import logging
-
-# =============================================================
-# FIX: Disable davey requirement if not available
-# =============================================================
-# Uncomment this if davey won't install:
-# os.environ['DISCORD_VOICE_NO_DAVEY'] = '1'
+import subprocess
 
 # Suppress warnings
 import warnings
@@ -48,13 +45,21 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 DEFAULT_VOLUME = float(os.environ.get('DEFAULT_VOLUME', '0.5'))
 
 # =============================================================
-# YT-DLP OPTIONS (FIXED FOR 2026)
+# UPDATED YT-DLP OPTIONS (WITH COOKIES SUPPORT)
 # =============================================================
 
 FFMPEG_OPTIONS = {
     'before_options': '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5',
     'options': f'-vn -filter:a "volume={DEFAULT_VOLUME}"'
 }
+
+# Check if cookies.txt exists
+COOKIE_FILE = 'cookies.txt'
+if os.path.exists(COOKIE_FILE):
+    logger.info(f"✅ Cookies file found: {COOKIE_FILE}")
+else:
+    logger.warning(f"⚠️ Cookies file not found: {COOKIE_FILE}")
+    logger.warning("YouTube may block requests without cookies")
 
 YDL_OPTIONS = {
     'format': 'bestaudio/best',
@@ -70,6 +75,7 @@ YDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
+    'cookiefile': COOKIE_FILE if os.path.exists(COOKIE_FILE) else None,
     'extractor_args': {
         'youtube': {
             'player_client': ['android', 'web'],
@@ -150,11 +156,11 @@ def clean_query(query: str) -> str:
     return query.strip()
 
 # =============================================================
-# SONG FUNCTIONS
+# SONG FUNCTIONS (WITH COOKIES)
 # =============================================================
 
 async def get_song_info(query: str):
-    """Get song info using yt-dlp."""
+    """Get song info using yt-dlp with cookies."""
     logger.info(f"🔍 Searching for: {query}")
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
@@ -164,6 +170,7 @@ async def get_song_info(query: str):
             if info and info.get('entries'):
                 video = info['entries'][0]
                 if video:
+                    # Try to get best audio URL
                     audio_url = video.get('url')
                     if not audio_url:
                         formats = video.get('formats', [])
@@ -175,6 +182,7 @@ async def get_song_info(query: str):
                             audio_url = formats[-1].get('url')
                     
                     if not audio_url:
+                        # Fallback: use webpage_url and let FFmpeg handle it
                         audio_url = video.get('webpage_url', '')
                     
                     if not audio_url:
@@ -196,7 +204,7 @@ async def get_song_info(query: str):
         return None
 
 async def get_song_info_url(url: str):
-    """Get song info from a URL."""
+    """Get song info from a URL with cookies."""
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -230,6 +238,62 @@ async def get_song_info_url(url: str):
             }
     except Exception as e:
         logger.error(f"Error getting URL info: {e}")
+        return None
+
+async def get_playlist_info(url: str):
+    """Get playlist info with cookies."""
+    try:
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if info is None:
+                return None
+            
+            if 'entries' in info:
+                playlist_name = info.get('title', 'Unknown Playlist')
+                songs = []
+                
+                for entry in info['entries']:
+                    if entry:
+                        audio_url = entry.get('url')
+                        if not audio_url:
+                            formats = entry.get('formats', [])
+                            for f in formats:
+                                if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                                    audio_url = f.get('url')
+                                    break
+                            if not audio_url and formats:
+                                audio_url = formats[-1].get('url')
+                        
+                        if audio_url:
+                            songs.append({
+                                'title': entry.get('title', 'Unknown'),
+                                'url': entry.get('webpage_url', ''),
+                                'duration': entry.get('duration', 0),
+                                'thumbnail': entry.get('thumbnail', ''),
+                                'uploader': entry.get('uploader', 'Unknown'),
+                                'audio_url': audio_url
+                            })
+                
+                return {
+                    'is_playlist': True,
+                    'name': playlist_name,
+                    'songs': songs,
+                    'count': len(songs)
+                }
+            else:
+                return {
+                    'is_playlist': False,
+                    'song': {
+                        'title': info.get('title', 'Unknown'),
+                        'url': info.get('webpage_url', ''),
+                        'duration': info.get('duration', 0),
+                        'thumbnail': info.get('thumbnail', ''),
+                        'uploader': info.get('uploader', 'Unknown'),
+                        'audio_url': info.get('url', '')
+                    }
+                }
+    except Exception as e:
+        logger.error(f"Error getting playlist info: {e}")
         return None
 
 # =============================================================
@@ -302,7 +366,7 @@ async def create_queue_embed(ctx, guild_id):
     return embed
 
 # =============================================================
-# BOT COMMANDS
+# BOT COMMANDS (FIXED - NO 'help' COMMAND)
 # =============================================================
 
 @bot.event
@@ -312,7 +376,15 @@ async def on_ready():
     logger.info(f'📡 Connected to {len(bot.guilds)} servers')
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info(f'📌 Prefix: .')
-    logger.info('📋 Commands:')
+    logger.info(f'🔍 Source: yt-dlp with cookies')
+    
+    # Check if cookies file exists
+    if os.path.exists(COOKIE_FILE):
+        logger.info(f'🍪 Cookies file found: {COOKIE_FILE}')
+    else:
+        logger.warning(f'⚠️ Cookies file not found: {COOKIE_FILE}')
+    
+    logger.info('\n📋 Commands:')
     logger.info('  .play <song> - Play a song (auto-joins voice)')
     logger.info('  .join - Join your voice channel')
     logger.info('  .pause - Pause the current song')
@@ -329,6 +401,7 @@ async def on_ready():
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
+    """Show help menu."""
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
@@ -595,9 +668,17 @@ async def on_command_error(ctx, error):
 # =============================================================
 
 def main():
-    logger.info("🎵 Starting F-Society Music Bot (FIXED)...")
+    logger.info("🎵 Starting F-Society Music Bot (FULLY FIXED)...")
     logger.info("🔊 Auto-join voice channel: ENABLED")
     logger.info("📌 Prefix: .")
+    logger.info("🔍 Source: yt-dlp with cookies")
+    
+    # Check for cookies file
+    if os.path.exists(COOKIE_FILE):
+        logger.info(f"🍪 Cookies file loaded: {COOKIE_FILE}")
+    else:
+        logger.warning(f"⚠️ No cookies file found at: {COOKIE_FILE}")
+        logger.warning("YouTube may block requests. Add cookies.txt to fix.")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
