@@ -1,7 +1,6 @@
 {
   "name": "f-society-music-bot",
   "version": "3.0.0",
-  "description": "Discord music bot with Brave browser + adblock - WORKING",
   "main": "browser-automation.js",
   "scripts": {
     "start": "node browser-automation.js"
@@ -15,7 +14,5 @@
   },
   "engines": {
     "node": ">=18.0.0"
-  },
-  "author": "@yathishyt",
-  "license": "MIT"
+  }
 }
