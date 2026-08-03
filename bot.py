@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (WITH FALLBACK)
+# DISCORD MUSIC BOT - F-SOCIETY (YT-DLP ONLY)
 # =============================================================
+# - Uses yt-dlp directly (no Brave server needed)
 # - Auto-joins voice channel on .play
-# - Brave browser with adblock (fallback to yt-dlp)
 # - Full queue system with playlist support
 # - F-Society branding
 # - Developed by @yathishyt
@@ -15,13 +15,9 @@ import asyncio
 import yt_dlp
 import os
 import json
-import aiohttp
 import datetime
-import re
 import sys
 import random
-import subprocess
-import time
 import logging
 
 # Suppress warnings
@@ -43,7 +39,6 @@ logger = logging.getLogger('F-Society-Music')
 # =============================================================
 
 BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
-ADBLOCK_ENABLED = os.environ.get('ADBLOCK_ENABLED', 'true').lower() == 'true'
 DEFAULT_VOLUME = float(os.environ.get('DEFAULT_VOLUME', '0.5'))
 
 # =============================================================
@@ -90,7 +85,6 @@ bot = commands.Bot(command_prefix='.', intents=intents)
 
 # Music state
 music_state = {}
-brave_process = None
 
 # =============================================================
 # VOICE FUNCTIONS
@@ -126,48 +120,6 @@ async def leave_voice(ctx):
     return False
 
 # =============================================================
-# BRAVE AUTOMATION
-# =============================================================
-
-def start_brave_server():
-    global brave_process
-    try:
-        env = os.environ.copy()
-        env['ADBLOCK_ENABLED'] = str(ADBLOCK_ENABLED).lower()
-        
-        brave_process = subprocess.Popen(
-            ['node', 'browser-automation.js'],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,
-            env=env
-        )
-        logger.info("🟢 Brave automation server started!")
-        logger.info(f"🛡️ Adblock: {'ENABLED' if ADBLOCK_ENABLED else 'DISABLED'}")
-        time.sleep(3)
-        return True
-    except Exception as e:
-        logger.warning(f"⚠️ Brave server not available: {e}")
-        logger.info("🔄 Using yt-dlp fallback instead")
-        return False
-
-async def search_brave(query: str) -> dict:
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                'http://localhost:3000/search',
-                json={'query': query},
-                timeout=aiohttp.ClientTimeout(total=10)
-            ) as response:
-                if response.status == 200:
-                    return await response.json()
-                else:
-                    return None
-    except:
-        return None
-
-# =============================================================
 # HELPERS
 # =============================================================
 
@@ -189,39 +141,19 @@ def clean_query(query: str) -> str:
     return query.strip()
 
 # =============================================================
-# SONG FUNCTIONS (WITH FALLBACK)
+# SONG FUNCTIONS (YT-DLP ONLY)
 # =============================================================
 
-async def get_song_info_brave(query: str):
-    """Get song info - tries Brave first, then yt-dlp fallback."""
-    try:
-        # Try Brave first
-        search_result = await search_brave(query)
-        if search_result and search_result.get('url'):
-            logger.info(f"✅ Brave found: {search_result.get('title')}")
-            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-                info = ydl.extract_info(search_result['url'], download=False)
-                if info:
-                    return {
-                        'title': info.get('title', 'Unknown'),
-                        'url': info.get('webpage_url', ''),
-                        'duration': info.get('duration', 0),
-                        'thumbnail': info.get('thumbnail', ''),
-                        'uploader': info.get('uploader', 'Unknown'),
-                        'audio_url': info.get('url', '')
-                    }
-    except Exception as e:
-        logger.warning(f"Brave search failed: {e}")
-    
-    # Fallback: Use yt-dlp directly
-    logger.info(f"🔄 Using yt-dlp fallback for: {query}")
+async def get_song_info(query: str):
+    """Get song info using yt-dlp."""
+    logger.info(f"🔍 Searching for: {query}")
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
             info = ydl.extract_info(f"ytsearch:1:{query}", download=False)
             if info and info.get('entries'):
                 video = info['entries'][0]
                 if video:
-                    logger.info(f"✅ yt-dlp found: {video.get('title')}")
+                    logger.info(f"✅ Found: {video.get('title')}")
                     return {
                         'title': video.get('title', 'Unknown'),
                         'url': video.get('webpage_url', ''),
@@ -230,10 +162,10 @@ async def get_song_info_brave(query: str):
                         'uploader': video.get('uploader', 'Unknown'),
                         'audio_url': video.get('url', '')
                     }
+            return None
     except Exception as e:
-        logger.error(f"yt-dlp fallback failed: {e}")
-    
-    return None
+        logger.error(f"yt-dlp error: {e}")
+        return None
 
 async def get_song_info_url(url: str):
     try:
@@ -314,7 +246,7 @@ async def create_now_playing_embed(song):
     duration = song.get('duration', 0)
     embed.add_field(name="⏱️ Duration", value=format_duration(duration), inline=True)
     embed.add_field(name="👤 Uploader", value=song.get('uploader', 'Unknown'), inline=True)
-    embed.add_field(name="🛡️ Adblock", value="✅ Enabled" if ADBLOCK_ENABLED else "❌ Disabled", inline=True)
+    embed.add_field(name="🔍 Source", value="yt-dlp", inline=True)
     
     if song.get('thumbnail'):
         embed.set_thumbnail(url=song.get('thumbnail'))
@@ -378,11 +310,9 @@ async def on_ready():
     logger.info(f'🎵 F-Society Music Bot online!')
     logger.info(f'🤖 Bot Name: {bot.user.name}')
     logger.info(f'📡 Connected to {len(bot.guilds)} servers')
-    logger.info(f'🛡️ Adblock: {"✅ ENABLED" if ADBLOCK_ENABLED else "❌ DISABLED"}')
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info(f'📌 Prefix: .')
-    
-    start_brave_server()
+    logger.info(f'🔍 Source: yt-dlp')
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
@@ -402,11 +332,8 @@ async def commands_cmd(ctx):
                    "`.queue` - Show queue\n"
                    "`.shuffle` - Shuffle queue\n"
                    "`.clear` - Clear queue\n\n"
-                   "**Search & Info:**\n"
-                   "`.search <query>` - Search using Brave\n"
-                   "`.np` - Now playing\n\n"
-                   "**Settings:**\n"
-                   "`.adblock` - Toggle adblock\n"
+                   "**Info:**\n"
+                   "`.np` - Now playing\n"
                    "`.commands` - Show this menu",
         color=discord.Color.from_rgb(0, 255, 204),
         timestamp=datetime.datetime.now()
@@ -439,11 +366,10 @@ async def play_cmd(ctx, *, query: str):
         }
     
     query = clean_query(query)
-    adblock_status = "🛡️ Adblock: ON" if ADBLOCK_ENABLED else "⚠️ Adblock: OFF"
-    status_msg = await ctx.send(f"🔍 Processing `{query}`...\n{join_msg}\n{adblock_status}")
+    status_msg = await ctx.send(f"🔍 Searching for `{query}`...\n{join_msg}")
     
     if is_playlist_url(query):
-        await status_msg.edit(content=f"📁 Detected playlist! Fetching songs...\n{join_msg}\n{adblock_status}")
+        await status_msg.edit(content=f"📁 Detected playlist! Fetching songs...\n{join_msg}")
         playlist_data = await get_playlist_info(query)
         
         if not playlist_data or not playlist_data.get('is_playlist'):
@@ -461,7 +387,7 @@ async def play_cmd(ctx, *, query: str):
             added += 1
         
         await status_msg.edit(
-            content=f"✅ Added **{added}** songs from playlist `{playlist_data.get('name', 'Unknown')}` to queue!\n{join_msg}\n{adblock_status}"
+            content=f"✅ Added **{added}** songs from playlist `{playlist_data.get('name', 'Unknown')}` to queue!\n{join_msg}"
         )
         
         if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
@@ -470,7 +396,7 @@ async def play_cmd(ctx, *, query: str):
         return
     
     if 'youtube.com/watch' in query or 'youtu.be/' in query:
-        await status_msg.edit(content=f"🎵 Fetching song details...\n{join_msg}\n{adblock_status}")
+        await status_msg.edit(content=f"🎵 Fetching song details...\n{join_msg}")
         song_info = await get_song_info_url(query)
         
         if not song_info:
@@ -478,68 +404,25 @@ async def play_cmd(ctx, *, query: str):
             return
         
         music_state[guild_id]['queue'].append(song_info)
-        await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}** to queue!\n{join_msg}\n{adblock_status}")
+        await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}** to queue!\n{join_msg}")
         
         if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
             await play_next(ctx)
         
         return
     
-    await status_msg.edit(content=f"🔍 Searching for `{query}` using Brave Browser...\n{join_msg}\n{adblock_status}")
-    song_info = await get_song_info_brave(query)
+    await status_msg.edit(content=f"🔍 Searching for `{query}`...\n{join_msg}")
+    song_info = await get_song_info(query)
     
     if not song_info:
         await status_msg.edit(content="❌ Could not find that song!")
         return
     
     music_state[guild_id]['queue'].append(song_info)
-    await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}** to queue!\n{join_msg}\n{adblock_status}")
+    await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}** to queue!\n{join_msg}")
     
     if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
         await play_next(ctx)
-
-@bot.command(name='search')
-async def search_cmd(ctx, *, query: str):
-    query = clean_query(query)
-    adblock_status = "🛡️ Adblock: ON" if ADBLOCK_ENABLED else "⚠️ Adblock: OFF"
-    await ctx.send(f"🔍 Searching `{query}` using Brave Browser...\n{adblock_status}")
-    
-    result = await search_brave(query)
-    
-    if not result:
-        await ctx.send("❌ No results found! (Brave server may be down)")
-        return
-    
-    embed = discord.Embed(
-        title="🔍 Brave Search Results",
-        description=f"**{result.get('title', 'Unknown')}**",
-        color=discord.Color.from_rgb(0, 255, 204),
-        timestamp=datetime.datetime.now()
-    )
-    embed.add_field(name="📊 URL", value=result.get('url', 'No URL'), inline=False)
-    embed.add_field(name="🛡️ Adblock", value="✅ Enabled" if ADBLOCK_ENABLED else "❌ Disabled", inline=True)
-    embed.set_footer(text="developed by @yathishyt ⚡ | F-Society Music")
-    
-    if result.get('thumbnail'):
-        embed.set_thumbnail(url=result.get('thumbnail'))
-    
-    await ctx.send(embed=embed)
-
-@bot.command(name='adblock')
-async def toggle_adblock(ctx):
-    global ADBLOCK_ENABLED
-    ADBLOCK_ENABLED = not ADBLOCK_ENABLED
-    os.environ['ADBLOCK_ENABLED'] = str(ADBLOCK_ENABLED).lower()
-    
-    status = "🛡️ Adblock ENABLED" if ADBLOCK_ENABLED else "⚠️ Adblock DISABLED"
-    await ctx.send(f"✅ {status}")
-    
-    await ctx.send("🔄 Restarting Brave browser with new settings...")
-    if brave_process:
-        brave_process.terminate()
-        time.sleep(2)
-    start_brave_server()
-    await ctx.send("✅ Brave browser restarted!")
 
 @bot.command(name='pause')
 async def pause_cmd(ctx):
@@ -697,12 +580,10 @@ async def on_command_error(ctx, error):
 # =============================================================
 
 def main():
-    logger.info("🎵 Starting F-Society Music Bot (FINAL VERSION)...")
-    logger.info("🟢 Brave Browser integration: ENABLED")
-    logger.info(f"🛡️ Adblock: {'ENABLED' if ADBLOCK_ENABLED else 'DISABLED'}")
+    logger.info("🎵 Starting F-Society Music Bot (yt-dlp)...")
     logger.info("🔊 Auto-join voice channel: ENABLED")
     logger.info("📌 Prefix: .")
-    logger.info("🔄 Fallback: yt-dlp (if Brave fails)")
+    logger.info("🔍 Source: yt-dlp (stable)")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
