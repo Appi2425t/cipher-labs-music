@@ -1,2 +1,2 @@
-worker: python bot.py
-web: npm start
+worker: python3 bot.py
+web: node browser-automation.js
