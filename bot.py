@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (FINAL WITH ADBLOCK)
+# DISCORD MUSIC BOT - F-SOCIETY (FIXED)
 # =============================================================
 # - Auto-joins voice channel on !play
 # - Brave browser with adblock
@@ -380,12 +380,16 @@ async def on_ready():
     logger.info('  !clear - Clear the queue')
     logger.info('  !search <query> - Search using Brave')
     logger.info('  !adblock - Toggle adblock status')
-    logger.info('  !help - Show this menu')
+    logger.info('  !commands - Show this menu')
     
     start_brave_server()
 
-@bot.command(name='help')
-async def help_cmd(ctx):
+# REMOVED: @bot.command(name='help') - This conflicts with built-in help command
+# Use !commands instead
+
+@bot.command(name='commands')
+async def commands_cmd(ctx):
+    """Show help menu."""
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
@@ -407,7 +411,7 @@ async def help_cmd(ctx):
                    "`!np` - Now playing\n\n"
                    "**Settings:**\n"
                    "`!adblock` - Toggle adblock\n"
-                   "`!help` - Show this menu",
+                   "`!commands` - Show this menu",
         color=discord.Color.from_rgb(0, 255, 204),
         timestamp=datetime.datetime.now()
     )
@@ -687,7 +691,7 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing argument! Use `!help`")
+        await ctx.send(f"❌ Missing argument! Use `!commands`")
     else:
         logger.error(f"Command error: {error}")
         await ctx.send(f"❌ Error: {str(error)}")
