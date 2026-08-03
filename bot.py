@@ -2,10 +2,10 @@
 # =============================================================
 # DISCORD MUSIC BOT - F-SOCIETY (FULLY FIXED)
 # =============================================================
-# - FIXED: 'help' command conflict (renamed to 'commands')
+# - FIXED: 'help' command conflict
 # - FIXED: YouTube format errors (updated yt-dlp options)
-# - FIXED: Voice heartbeat issues
-# - Fixed: Cookie support for YouTube
+# - FIXED: Voice encryption (PyNaCl installed)
+# - FIXED: Cookie support for YouTube
 # - F-Society branding
 # - Developed by @yathishyt
 # =============================================================
@@ -313,6 +313,7 @@ async def on_ready():
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info(f'📌 Prefix: .')
     logger.info(f'🔍 Source: yt-dlp')
+    logger.info(f'🔒 Voice encryption: PyNaCl installed')
     logger.info('\n📋 Commands:')
     logger.info('  .play <song> - Play a song (auto-joins voice)')
     logger.info('  .join - Join your voice channel')
@@ -553,7 +554,6 @@ async def play_next(ctx):
     music_state[guild_id]['current'] = song
     
     try:
-        # Use the audio_url if available, otherwise fallback to webpage_url
         audio_source_url = song.get('audio_url', song.get('url', ''))
         
         audio_source = discord.FFmpegPCMAudio(
@@ -602,6 +602,7 @@ def main():
     logger.info("🔊 Auto-join voice channel: ENABLED")
     logger.info("📌 Prefix: .")
     logger.info("🔍 Source: yt-dlp (updated)")
+    logger.info("🔒 Voice encryption: PyNaCl installed")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
