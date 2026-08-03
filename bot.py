@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (FULLY FIXED)
+# DISCORD MUSIC BOT - F-SOCIETY (FIXED)
 # =============================================================
-# - FIXED: 'help' command conflict
-# - FIXED: YouTube format errors (updated yt-dlp options)
-# - FIXED: Voice encryption (PyNaCl installed)
-# - FIXED: Cookie support for YouTube
+# - Fixed: davey voice encryption support
+# - Fixed: 'help' command conflict
+# - Fixed: YouTube format errors
 # - F-Society branding
 # - Developed by @yathishyt
 # =============================================================
@@ -20,7 +19,12 @@ import datetime
 import sys
 import random
 import logging
-import subprocess
+
+# =============================================================
+# FIX: Disable davey requirement if not available
+# =============================================================
+# Uncomment this if davey won't install:
+# os.environ['DISCORD_VOICE_NO_DAVEY'] = '1'
 
 # Suppress warnings
 import warnings
@@ -44,7 +48,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 DEFAULT_VOLUME = float(os.environ.get('DEFAULT_VOLUME', '0.5'))
 
 # =============================================================
-# UPDATED YT-DLP OPTIONS (FIXED FOR 2026)
+# YT-DLP OPTIONS (FIXED FOR 2026)
 # =============================================================
 
 FFMPEG_OPTIONS = {
@@ -75,8 +79,6 @@ YDL_OPTIONS = {
     },
     'geo_bypass': True,
     'geo_bypass_country': 'US',
-    # Add cookies if you have a cookies.txt file
-    # 'cookiefile': 'cookies.txt',
 }
 
 # =============================================================
@@ -148,7 +150,7 @@ def clean_query(query: str) -> str:
     return query.strip()
 
 # =============================================================
-# SONG FUNCTIONS (FIXED)
+# SONG FUNCTIONS
 # =============================================================
 
 async def get_song_info(query: str):
@@ -162,7 +164,6 @@ async def get_song_info(query: str):
             if info and info.get('entries'):
                 video = info['entries'][0]
                 if video:
-                    # Try to get best audio URL
                     audio_url = video.get('url')
                     if not audio_url:
                         formats = video.get('formats', [])
@@ -174,7 +175,6 @@ async def get_song_info(query: str):
                             audio_url = formats[-1].get('url')
                     
                     if not audio_url:
-                        # Fallback: use webpage_url and let FFmpeg handle it
                         audio_url = video.get('webpage_url', '')
                     
                     if not audio_url:
@@ -302,7 +302,7 @@ async def create_queue_embed(ctx, guild_id):
     return embed
 
 # =============================================================
-# BOT COMMANDS (FIXED - NO 'help' COMMAND)
+# BOT COMMANDS
 # =============================================================
 
 @bot.event
@@ -312,9 +312,7 @@ async def on_ready():
     logger.info(f'📡 Connected to {len(bot.guilds)} servers')
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info(f'📌 Prefix: .')
-    logger.info(f'🔍 Source: yt-dlp')
-    logger.info(f'🔒 Voice encryption: PyNaCl installed')
-    logger.info('\n📋 Commands:')
+    logger.info('📋 Commands:')
     logger.info('  .play <song> - Play a song (auto-joins voice)')
     logger.info('  .join - Join your voice channel')
     logger.info('  .pause - Pause the current song')
@@ -331,7 +329,6 @@ async def on_ready():
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
-    """Show help menu."""
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
@@ -601,8 +598,6 @@ def main():
     logger.info("🎵 Starting F-Society Music Bot (FIXED)...")
     logger.info("🔊 Auto-join voice channel: ENABLED")
     logger.info("📌 Prefix: .")
-    logger.info("🔍 Source: yt-dlp (updated)")
-    logger.info("🔒 Voice encryption: PyNaCl installed")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
