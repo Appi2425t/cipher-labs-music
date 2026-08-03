@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (WITH COOKIES)
+# DISCORD MUSIC BOT - F-SOCIETY (FORMAT FIXED)
 # =============================================================
-# - Uses yt-dlp with cookies to bypass YouTube bot detection
+# - Updated yt-dlp format selection
+# - Uses available audio formats
 # - Auto-joins voice channel on .play
-# - Full queue system with playlist support
 # - F-Society branding
-# - Developed by @yathishyt
 # =============================================================
 
 import discord
@@ -14,7 +13,6 @@ from discord.ext import commands
 import asyncio
 import yt_dlp
 import os
-import json
 import datetime
 import sys
 import random
@@ -42,7 +40,7 @@ BOT_TOKEN = os.environ.get('BOT_TOKEN', 'YOUR_BOT_TOKEN_HERE')
 DEFAULT_VOLUME = float(os.environ.get('DEFAULT_VOLUME', '0.5'))
 
 # =============================================================
-# YT-DLP OPTIONS (WITH COOKIES)
+# YT-DLP OPTIONS (FIXED FORMAT)
 # =============================================================
 
 FFMPEG_OPTIONS = {
@@ -50,9 +48,8 @@ FFMPEG_OPTIONS = {
     'options': f'-vn -filter:a "volume={DEFAULT_VOLUME}"'
 }
 
-# YDL_OPTIONS with cookies support
 YDL_OPTIONS = {
-    'format': 'bestaudio/best',
+    'format': 'bestaudio[ext=m4a]/bestaudio/best',  # Try m4a first, then any audio
     'extractaudio': True,
     'audioformat': 'mp3',
     'outtmpl': '%(extractor)s-%(id)s-%(title)s.%(ext)s',
@@ -65,12 +62,11 @@ YDL_OPTIONS = {
     'no_warnings': True,
     'default_search': 'auto',
     'source_address': '0.0.0.0',
-    'cookiefile': 'cookies.txt',  # <-- REQUIRED for Railway
+    'cookiefile': 'cookies.txt',
     'extractor_args': {
         'youtube': {
             'player_client': ['android', 'web'],
             'skip': ['dash', 'hls'],
-            'extract_flat': False,
         }
     },
     'geo_bypass': True,
@@ -146,11 +142,11 @@ def clean_query(query: str) -> str:
     return query.strip()
 
 # =============================================================
-# SONG FUNCTIONS (WITH COOKIES)
+# SONG FUNCTIONS
 # =============================================================
 
 async def get_song_info(query: str):
-    """Get song info using yt-dlp with cookies."""
+    """Get song info using yt-dlp."""
     logger.info(f"🔍 Searching for: {query}")
     try:
         with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
@@ -160,15 +156,21 @@ async def get_song_info(query: str):
             if info and info.get('entries'):
                 video = info['entries'][0]
                 if video:
+                    # Get the best available audio URL
                     audio_url = video.get('url')
                     if not audio_url:
                         formats = video.get('formats', [])
+                        # Find best audio format
                         for f in formats:
                             if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
                                 audio_url = f.get('url')
                                 break
                         if not audio_url and formats:
                             audio_url = formats[-1].get('url')
+                    
+                    if not audio_url:
+                        logger.warning(f"No audio URL found for: {video.get('title')}")
+                        return None
                     
                     logger.info(f"✅ Found: {video.get('title')}")
                     return {
@@ -177,7 +179,7 @@ async def get_song_info(query: str):
                         'duration': video.get('duration', 0),
                         'thumbnail': video.get('thumbnail', ''),
                         'uploader': video.get('uploader', 'Unknown'),
-                        'audio_url': audio_url or video.get('url', '')
+                        'audio_url': audio_url
                     }
             return None
     except Exception as e:
@@ -202,13 +204,17 @@ async def get_song_info_url(url: str):
                 if not audio_url and formats:
                     audio_url = formats[-1].get('url')
             
+            if not audio_url:
+                logger.warning(f"No audio URL found for: {info.get('title')}")
+                return None
+            
             return {
                 'title': info.get('title', 'Unknown'),
                 'url': info.get('webpage_url', ''),
                 'duration': info.get('duration', 0),
                 'thumbnail': info.get('thumbnail', ''),
                 'uploader': info.get('uploader', 'Unknown'),
-                'audio_url': audio_url or info.get('url', '')
+                'audio_url': audio_url
             }
     except Exception as e:
         logger.error(f"Error getting URL info: {e}")
@@ -238,14 +244,15 @@ async def get_playlist_info(url: str):
                             if not audio_url and formats:
                                 audio_url = formats[-1].get('url')
                         
-                        songs.append({
-                            'title': entry.get('title', 'Unknown'),
-                            'url': entry.get('webpage_url', ''),
-                            'duration': entry.get('duration', 0),
-                            'thumbnail': entry.get('thumbnail', ''),
-                            'uploader': entry.get('uploader', 'Unknown'),
-                            'audio_url': audio_url or entry.get('url', '')
-                        })
+                        if audio_url:
+                            songs.append({
+                                'title': entry.get('title', 'Unknown'),
+                                'url': entry.get('webpage_url', ''),
+                                'duration': entry.get('duration', 0),
+                                'thumbnail': entry.get('thumbnail', ''),
+                                'uploader': entry.get('uploader', 'Unknown'),
+                                'audio_url': audio_url
+                            })
                 
                 return {
                     'is_playlist': True,
@@ -254,6 +261,19 @@ async def get_playlist_info(url: str):
                     'count': len(songs)
                 }
             else:
+                audio_url = info.get('url')
+                if not audio_url:
+                    formats = info.get('formats', [])
+                    for f in formats:
+                        if f.get('acodec') != 'none' and f.get('vcodec') == 'none':
+                            audio_url = f.get('url')
+                            break
+                    if not audio_url and formats:
+                        audio_url = formats[-1].get('url')
+                
+                if not audio_url:
+                    return None
+                
                 return {
                     'is_playlist': False,
                     'song': {
@@ -262,7 +282,7 @@ async def get_playlist_info(url: str):
                         'duration': info.get('duration', 0),
                         'thumbnail': info.get('thumbnail', ''),
                         'uploader': info.get('uploader', 'Unknown'),
-                        'audio_url': info.get('url', '')
+                        'audio_url': audio_url
                     }
                 }
     except Exception as e:
@@ -284,7 +304,6 @@ async def create_now_playing_embed(song):
     duration = song.get('duration', 0)
     embed.add_field(name="⏱️ Duration", value=format_duration(duration), inline=True)
     embed.add_field(name="👤 Uploader", value=song.get('uploader', 'Unknown'), inline=True)
-    embed.add_field(name="🔍 Source", value="yt-dlp", inline=True)
     
     if song.get('thumbnail'):
         embed.set_thumbnail(url=song.get('thumbnail'))
@@ -348,31 +367,30 @@ async def on_ready():
     logger.info(f'🎵 F-Society Music Bot online!')
     logger.info(f'🤖 Bot Name: {bot.user.name}')
     logger.info(f'📡 Connected to {len(bot.guilds)} servers')
-    logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info(f'📌 Prefix: .')
-    logger.info(f'🔍 Source: yt-dlp with cookies')
+    logger.info(f'🔍 Format: bestaudio[ext=m4a]/bestaudio/best')
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
-                   "`.play <song/URL/playlist>` - Play a song (auto-joins voice)\n"
-                   "`.join` - Manually join voice channel\n"
+                   "`.play <song/URL/playlist>` - Play a song\n"
+                   "`.join` - Join voice channel\n"
                    "`.leave` - Leave voice channel\n\n"
-                   "**Playback Control:**\n"
-                   "`.pause` - Pause current song\n"
-                   "`.resume` - Resume current song\n"
-                   "`.skip` - Skip current song\n"
-                   "`.stop` - Stop and clear queue\n"
+                   "**Playback:**\n"
+                   "`.pause` - Pause\n"
+                   "`.resume` - Resume\n"
+                   "`.skip` - Skip\n"
+                   "`.stop` - Stop & clear\n"
                    "`.volume <0-200>` - Set volume\n\n"
-                   "**Queue Management:**\n"
+                   "**Queue:**\n"
                    "`.queue` - Show queue\n"
-                   "`.shuffle` - Shuffle queue\n"
-                   "`.clear` - Clear queue\n\n"
+                   "`.shuffle` - Shuffle\n"
+                   "`.clear` - Clear\n\n"
                    "**Info:**\n"
                    "`.np` - Now playing\n"
-                   "`.commands` - Show this menu",
+                   "`.commands` - This menu",
         color=discord.Color.from_rgb(0, 255, 204),
         timestamp=datetime.datetime.now()
     )
@@ -382,10 +400,7 @@ async def commands_cmd(ctx):
 @bot.command(name='join')
 async def join_cmd(ctx):
     channel, message = await ensure_voice_connected(ctx)
-    if channel:
-        await ctx.send(message)
-    else:
-        await ctx.send(message)
+    await ctx.send(message if not channel else f"✅ {message}")
 
 @bot.command(name='play', aliases=['p'])
 async def play_cmd(ctx, *, query: str):
@@ -407,7 +422,7 @@ async def play_cmd(ctx, *, query: str):
     status_msg = await ctx.send(f"🔍 Searching for `{query}`...\n{join_msg}")
     
     if is_playlist_url(query):
-        await status_msg.edit(content=f"📁 Detected playlist! Fetching songs...\n{join_msg}")
+        await status_msg.edit(content=f"📁 Fetching playlist...\n{join_msg}")
         playlist_data = await get_playlist_info(query)
         
         if not playlist_data or not playlist_data.get('is_playlist'):
@@ -416,7 +431,7 @@ async def play_cmd(ctx, *, query: str):
         
         songs = playlist_data.get('songs', [])
         if not songs:
-            await status_msg.edit(content="❌ Playlist is empty!")
+            await status_msg.edit(content="❌ Playlist is empty or no audio available!")
             return
         
         added = 0
@@ -425,12 +440,11 @@ async def play_cmd(ctx, *, query: str):
             added += 1
         
         await status_msg.edit(
-            content=f"✅ Added **{added}** songs from playlist `{playlist_data.get('name', 'Unknown')}` to queue!\n{join_msg}"
+            content=f"✅ Added **{added}** songs from playlist `{playlist_data.get('name', 'Unknown')}`!\n{join_msg}"
         )
         
         if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
             await play_next(ctx)
-        
         return
     
     if 'youtube.com/watch' in query or 'youtu.be/' in query:
@@ -442,11 +456,10 @@ async def play_cmd(ctx, *, query: str):
             return
         
         music_state[guild_id]['queue'].append(song_info)
-        await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}** to queue!\n{join_msg}")
+        await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}**!\n{join_msg}")
         
         if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
             await play_next(ctx)
-        
         return
     
     await status_msg.edit(content=f"🔍 Searching for `{query}`...\n{join_msg}")
@@ -457,7 +470,7 @@ async def play_cmd(ctx, *, query: str):
         return
     
     music_state[guild_id]['queue'].append(song_info)
-    await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}** to queue!\n{join_msg}")
+    await status_msg.edit(content=f"✅ Added **{song_info.get('title', 'Unknown')}**!\n{join_msg}")
     
     if not ctx.voice_client.is_playing() and not ctx.voice_client.is_paused():
         await play_next(ctx)
@@ -468,7 +481,7 @@ async def pause_cmd(ctx):
         await ctx.send("❌ Nothing is playing!")
         return
     ctx.voice_client.pause()
-    await ctx.send("⏸️ Paused the current song.")
+    await ctx.send("⏸️ Paused.")
 
 @bot.command(name='resume')
 async def resume_cmd(ctx):
@@ -476,7 +489,7 @@ async def resume_cmd(ctx):
         await ctx.send("❌ Nothing is paused!")
         return
     ctx.voice_client.resume()
-    await ctx.send("▶️ Resumed the current song.")
+    await ctx.send("▶️ Resumed.")
 
 @bot.command(name='skip')
 async def skip_cmd(ctx):
@@ -485,7 +498,7 @@ async def skip_cmd(ctx):
         return
     if ctx.voice_client.is_playing():
         ctx.voice_client.stop()
-        await ctx.send("⏭️ Skipped the current song.")
+        await ctx.send("⏭️ Skipped.")
     else:
         await ctx.send("❌ Nothing is playing!")
 
@@ -497,7 +510,7 @@ async def stop_cmd(ctx):
         music_state[guild_id]['current'] = None
     if ctx.voice_client and ctx.voice_client.is_playing():
         ctx.voice_client.stop()
-    await ctx.send("🛑 Stopped the music and cleared the queue.")
+    await ctx.send("🛑 Stopped and cleared queue.")
 
 @bot.command(name='queue', aliases=['q'])
 async def queue_cmd(ctx):
@@ -596,7 +609,7 @@ async def play_next(ctx):
         
     except Exception as e:
         logger.error(f"Error playing: {e}")
-        await ctx.send(f"❌ Error playing song: {str(e)}")
+        await ctx.send(f"❌ Error playing: {str(e)}")
         await play_next(ctx)
 
 # =============================================================
@@ -618,19 +631,12 @@ async def on_command_error(ctx, error):
 # =============================================================
 
 def main():
-    logger.info("🎵 Starting F-Society Music Bot (with cookies)...")
-    logger.info("🔊 Auto-join voice channel: ENABLED")
+    logger.info("🎵 Starting F-Society Music Bot...")
     logger.info("📌 Prefix: .")
-    logger.info("🔍 Source: yt-dlp with cookies")
-    
-    # Check if cookies file exists
-    if os.path.exists('cookies.txt'):
-        logger.info("✅ cookies.txt found")
-    else:
-        logger.warning("⚠️ cookies.txt not found! YouTube may block requests.")
+    logger.info("🔍 Format: bestaudio[ext=m4a]/bestaudio/best")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
-        logger.error("❌ Please set BOT_TOKEN in environment variables!")
+        logger.error("❌ Please set BOT_TOKEN!")
         return
     
     try:
