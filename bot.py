@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (PREFIX: .)
+# DISCORD MUSIC BOT - F-SOCIETY (WITH FALLBACK)
 # =============================================================
 # - Auto-joins voice channel on .play
-# - Brave browser with adblock
+# - Brave browser with adblock (fallback to yt-dlp)
 # - Full queue system with playlist support
-# - Ad-free YouTube playback
 # - F-Society branding
 # - Developed by @yathishyt
 # =============================================================
@@ -87,7 +86,6 @@ intents.message_content = True
 intents.guilds = True
 intents.voice_states = True
 
-# Prefix changed to '.'
 bot = commands.Bot(command_prefix='.', intents=intents)
 
 # Music state
@@ -150,7 +148,8 @@ def start_brave_server():
         time.sleep(3)
         return True
     except Exception as e:
-        logger.error(f"❌ Failed to start Brave server: {e}")
+        logger.warning(f"⚠️ Brave server not available: {e}")
+        logger.info("🔄 Using yt-dlp fallback instead")
         return False
 
 async def search_brave(query: str) -> dict:
@@ -159,18 +158,13 @@ async def search_brave(query: str) -> dict:
             async with session.post(
                 'http://localhost:3000/search',
                 json={'query': query},
-                timeout=aiohttp.ClientTimeout(total=30)
+                timeout=aiohttp.ClientTimeout(total=10)
             ) as response:
                 if response.status == 200:
                     return await response.json()
                 else:
-                    logger.warning(f"Brave search error: {response.status}")
                     return None
-    except asyncio.TimeoutError:
-        logger.warning("Brave search timeout")
-        return None
-    except Exception as e:
-        logger.error(f"Brave search error: {e}")
+    except:
         return None
 
 # =============================================================
@@ -195,31 +189,51 @@ def clean_query(query: str) -> str:
     return query.strip()
 
 # =============================================================
-# SONG FUNCTIONS
+# SONG FUNCTIONS (WITH FALLBACK)
 # =============================================================
 
 async def get_song_info_brave(query: str):
+    """Get song info - tries Brave first, then yt-dlp fallback."""
     try:
+        # Try Brave first
         search_result = await search_brave(query)
-        if not search_result or not search_result.get('url'):
-            return None
-        
-        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
-            info = ydl.extract_info(search_result['url'], download=False)
-            if info is None:
-                return None
-            
-            return {
-                'title': info.get('title', 'Unknown'),
-                'url': info.get('webpage_url', ''),
-                'duration': info.get('duration', 0),
-                'thumbnail': info.get('thumbnail', ''),
-                'uploader': info.get('uploader', 'Unknown'),
-                'audio_url': info.get('url', '')
-            }
+        if search_result and search_result.get('url'):
+            logger.info(f"✅ Brave found: {search_result.get('title')}")
+            with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+                info = ydl.extract_info(search_result['url'], download=False)
+                if info:
+                    return {
+                        'title': info.get('title', 'Unknown'),
+                        'url': info.get('webpage_url', ''),
+                        'duration': info.get('duration', 0),
+                        'thumbnail': info.get('thumbnail', ''),
+                        'uploader': info.get('uploader', 'Unknown'),
+                        'audio_url': info.get('url', '')
+                    }
     except Exception as e:
-        logger.error(f"Error getting song info: {e}")
-        return None
+        logger.warning(f"Brave search failed: {e}")
+    
+    # Fallback: Use yt-dlp directly
+    logger.info(f"🔄 Using yt-dlp fallback for: {query}")
+    try:
+        with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
+            info = ydl.extract_info(f"ytsearch:1:{query}", download=False)
+            if info and info.get('entries'):
+                video = info['entries'][0]
+                if video:
+                    logger.info(f"✅ yt-dlp found: {video.get('title')}")
+                    return {
+                        'title': video.get('title', 'Unknown'),
+                        'url': video.get('webpage_url', ''),
+                        'duration': video.get('duration', 0),
+                        'thumbnail': video.get('thumbnail', ''),
+                        'uploader': video.get('uploader', 'Unknown'),
+                        'audio_url': video.get('url', '')
+                    }
+    except Exception as e:
+        logger.error(f"yt-dlp fallback failed: {e}")
+    
+    return None
 
 async def get_song_info_url(url: str):
     try:
@@ -356,7 +370,7 @@ async def create_queue_embed(ctx, guild_id):
     return embed
 
 # =============================================================
-# BOT COMMANDS (All prefixed with .)
+# BOT COMMANDS
 # =============================================================
 
 @bot.event
@@ -366,28 +380,12 @@ async def on_ready():
     logger.info(f'📡 Connected to {len(bot.guilds)} servers')
     logger.info(f'🛡️ Adblock: {"✅ ENABLED" if ADBLOCK_ENABLED else "❌ DISABLED"}')
     logger.info(f'🔊 Auto-join voice: ENABLED')
-    logger.info('\n📋 Commands:')
-    logger.info('  .play <song> - Play a song (auto-joins voice)')
-    logger.info('  .join - Join your voice channel')
-    logger.info('  .pause - Pause the current song')
-    logger.info('  .resume - Resume the current song')
-    logger.info('  .skip - Skip the current song')
-    logger.info('  .stop - Stop the music and clear queue')
-    logger.info('  .queue - Show the current queue')
-    logger.info('  .volume <0-200> - Set volume')
-    logger.info('  .np - Show now playing')
-    logger.info('  .leave - Leave the voice channel')
-    logger.info('  .shuffle - Shuffle the queue')
-    logger.info('  .clear - Clear the queue')
-    logger.info('  .search <query> - Search using Brave')
-    logger.info('  .adblock - Toggle adblock status')
-    logger.info('  .commands - Show this menu')
+    logger.info(f'📌 Prefix: .')
     
     start_brave_server()
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
-    """Show help menu."""
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
@@ -509,7 +507,7 @@ async def search_cmd(ctx, *, query: str):
     result = await search_brave(query)
     
     if not result:
-        await ctx.send("❌ No results found!")
+        await ctx.send("❌ No results found! (Brave server may be down)")
         return
     
     embed = discord.Embed(
@@ -704,6 +702,7 @@ def main():
     logger.info(f"🛡️ Adblock: {'ENABLED' if ADBLOCK_ENABLED else 'DISABLED'}")
     logger.info("🔊 Auto-join voice channel: ENABLED")
     logger.info("📌 Prefix: .")
+    logger.info("🔄 Fallback: yt-dlp (if Brave fails)")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
