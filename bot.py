@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # =============================================================
-# DISCORD MUSIC BOT - F-SOCIETY (FIXED)
+# DISCORD MUSIC BOT - F-SOCIETY (PREFIX: .)
 # =============================================================
-# - Auto-joins voice channel on !play
+# - Auto-joins voice channel on .play
 # - Brave browser with adblock
 # - Full queue system with playlist support
 # - Ad-free YouTube playback
@@ -87,7 +87,8 @@ intents.message_content = True
 intents.guilds = True
 intents.voice_states = True
 
-bot = commands.Bot(command_prefix='!', intents=intents)
+# Prefix changed to '.'
+bot = commands.Bot(command_prefix='.', intents=intents)
 
 # Music state
 music_state = {}
@@ -355,7 +356,7 @@ async def create_queue_embed(ctx, guild_id):
     return embed
 
 # =============================================================
-# BOT COMMANDS
+# BOT COMMANDS (All prefixed with .)
 # =============================================================
 
 @bot.event
@@ -366,26 +367,23 @@ async def on_ready():
     logger.info(f'🛡️ Adblock: {"✅ ENABLED" if ADBLOCK_ENABLED else "❌ DISABLED"}')
     logger.info(f'🔊 Auto-join voice: ENABLED')
     logger.info('\n📋 Commands:')
-    logger.info('  !play <song> - Play a song (auto-joins voice)')
-    logger.info('  !join - Join your voice channel')
-    logger.info('  !pause - Pause the current song')
-    logger.info('  !resume - Resume the current song')
-    logger.info('  !skip - Skip the current song')
-    logger.info('  !stop - Stop the music and clear queue')
-    logger.info('  !queue - Show the current queue')
-    logger.info('  !volume <0-200> - Set volume')
-    logger.info('  !np - Show now playing')
-    logger.info('  !leave - Leave the voice channel')
-    logger.info('  !shuffle - Shuffle the queue')
-    logger.info('  !clear - Clear the queue')
-    logger.info('  !search <query> - Search using Brave')
-    logger.info('  !adblock - Toggle adblock status')
-    logger.info('  !commands - Show this menu')
+    logger.info('  .play <song> - Play a song (auto-joins voice)')
+    logger.info('  .join - Join your voice channel')
+    logger.info('  .pause - Pause the current song')
+    logger.info('  .resume - Resume the current song')
+    logger.info('  .skip - Skip the current song')
+    logger.info('  .stop - Stop the music and clear queue')
+    logger.info('  .queue - Show the current queue')
+    logger.info('  .volume <0-200> - Set volume')
+    logger.info('  .np - Show now playing')
+    logger.info('  .leave - Leave the voice channel')
+    logger.info('  .shuffle - Shuffle the queue')
+    logger.info('  .clear - Clear the queue')
+    logger.info('  .search <query> - Search using Brave')
+    logger.info('  .adblock - Toggle adblock status')
+    logger.info('  .commands - Show this menu')
     
     start_brave_server()
-
-# REMOVED: @bot.command(name='help') - This conflicts with built-in help command
-# Use !commands instead
 
 @bot.command(name='commands')
 async def commands_cmd(ctx):
@@ -393,25 +391,25 @@ async def commands_cmd(ctx):
     embed = discord.Embed(
         title="🎵 F-Society Music Bot Commands",
         description="**Voice Control:**\n"
-                   "`!play <song/URL/playlist>` - Play a song (auto-joins voice)\n"
-                   "`!join` - Manually join voice channel\n"
-                   "`!leave` - Leave voice channel\n\n"
+                   "`.play <song/URL/playlist>` - Play a song (auto-joins voice)\n"
+                   "`.join` - Manually join voice channel\n"
+                   "`.leave` - Leave voice channel\n\n"
                    "**Playback Control:**\n"
-                   "`!pause` - Pause current song\n"
-                   "`!resume` - Resume current song\n"
-                   "`!skip` - Skip current song\n"
-                   "`!stop` - Stop and clear queue\n"
-                   "`!volume <0-200>` - Set volume\n\n"
+                   "`.pause` - Pause current song\n"
+                   "`.resume` - Resume current song\n"
+                   "`.skip` - Skip current song\n"
+                   "`.stop` - Stop and clear queue\n"
+                   "`.volume <0-200>` - Set volume\n\n"
                    "**Queue Management:**\n"
-                   "`!queue` - Show queue\n"
-                   "`!shuffle` - Shuffle queue\n"
-                   "`!clear` - Clear queue\n\n"
+                   "`.queue` - Show queue\n"
+                   "`.shuffle` - Shuffle queue\n"
+                   "`.clear` - Clear queue\n\n"
                    "**Search & Info:**\n"
-                   "`!search <query>` - Search using Brave\n"
-                   "`!np` - Now playing\n\n"
+                   "`.search <query>` - Search using Brave\n"
+                   "`.np` - Now playing\n\n"
                    "**Settings:**\n"
-                   "`!adblock` - Toggle adblock\n"
-                   "`!commands` - Show this menu",
+                   "`.adblock` - Toggle adblock\n"
+                   "`.commands` - Show this menu",
         color=discord.Color.from_rgb(0, 255, 204),
         timestamp=datetime.datetime.now()
     )
@@ -691,7 +689,7 @@ async def on_command_error(ctx, error):
     if isinstance(error, commands.CommandNotFound):
         return
     elif isinstance(error, commands.MissingRequiredArgument):
-        await ctx.send(f"❌ Missing argument! Use `!commands`")
+        await ctx.send(f"❌ Missing argument! Use `.commands`")
     else:
         logger.error(f"Command error: {error}")
         await ctx.send(f"❌ Error: {str(error)}")
@@ -705,6 +703,7 @@ def main():
     logger.info("🟢 Brave Browser integration: ENABLED")
     logger.info(f"🛡️ Adblock: {'ENABLED' if ADBLOCK_ENABLED else 'DISABLED'}")
     logger.info("🔊 Auto-join voice channel: ENABLED")
+    logger.info("📌 Prefix: .")
     
     if not BOT_TOKEN or BOT_TOKEN == 'YOUR_BOT_TOKEN_HERE':
         logger.error("❌ Please set BOT_TOKEN in environment variables!")
